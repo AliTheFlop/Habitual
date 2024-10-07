@@ -52,7 +52,10 @@ TODO:
 //Get ALL Tasks at once
 app.get("/api/tasks/daily", async (req, res) => {
   try {
-    const result = await db.collection("tasks").find().toArray();
+    const result = await db
+      .collection("tasks")
+      .find({ type: "Daily" })
+      .toArray();
     res.json(result);
   } catch (e) {
     res.json("An Error Has Occured: " + e);
@@ -63,9 +66,23 @@ app.get("/api/tasks/daily", async (req, res) => {
 app.get("/api/tasks/daily/:taskID", async (req, res) => {
   const { taskID } = req.params;
   console.log(taskID);
+
+  // Check if ID is valid
+  if (!ObjectId.isValid(taskID)) {
+    res.status(400).json({ error: "Invalid task ID format" });
+  }
+
+  // Try to find task & send result
   try {
-    const result = await tasks.find({ _id: new ObjectId(taskID) }).toArray();
-    res.json(result);
+    const result = await tasks.findOne({
+      $and: [{ _id: new ObjectId(taskID) }, { type: "Daily" }],
+    });
+
+    if (!result) {
+      res.status(404).json({ error: "Task not found." });
+    } else {
+      res.json(result);
+    }
   } catch (e) {
     res.status(400).json({ error: e });
   }
@@ -74,14 +91,11 @@ app.get("/api/tasks/daily/:taskID", async (req, res) => {
 //Insert a task (through the add task component)
 // This post NEEDS a name, habitual and complete variable put into it
 app.post("/api/tasks/daily", async (req, res) => {
-  console.log(req.body);
   let { name, habitual, complete } = req.body;
   let insertData = {
     name: name,
-    info: {
-      type: "Daily",
-      habitual: habitual,
-    },
+    type: "Daily",
+    habitual: habitual,
     weight: 0,
     complete: complete,
   };
@@ -90,25 +104,24 @@ app.post("/api/tasks/daily", async (req, res) => {
     await tasks.insertOne(insertData);
     res.json({ Success: insertData });
   } catch (e) {
-    console.error(e);
-    res.json({ Error: e });
+    res.json({ error: e });
   }
 });
 
 //Fix up a task
 app.patch("/api/tasks/daily/:taskID", async (req, res) => {
-  console.log(req.body);
-  console.log(req.params.taskID);
   const { taskID } = req.params;
   const updates = req.body;
 
+  //Check if ID in right format
   if (!ObjectId.isValid(taskID)) {
-    return res.status(400).json({ error: "Invalid task ID" });
+    return res.status(400).json({ error: "Invalid task ID format" });
   }
 
+  // PATCH SINGLE TASK
   try {
     const result = await tasks.updateOne(
-      { _id: new ObjectId(taskID) },
+      { $and: [{ _id: new ObjectId(taskID) }, { type: "Daily" }] },
       { $set: updates }
     );
 
@@ -123,19 +136,54 @@ app.patch("/api/tasks/daily/:taskID", async (req, res) => {
   }
 });
 
+// Change an entire document
+app.put("/api/tasks/daily/:taskID", async (req, res) => {
+  const { taskID } = req.params;
+  const { name, type, habitual, weight, complete } = req.body;
+
+  const newTask = {
+    name,
+    type,
+    habitual: habitual || false,
+    weight: weight || 0,
+    complete: complete || false,
+  };
+
+  if (!ObjectId.isValid(taskID)) {
+    return res.status(400).json({ error: "Invalid task ID format" });
+  }
+
+  try {
+    const result = await tasks.replaceOne(
+      { $and: [{ _id: new ObjectId(taskID) }, { type: "Daily" }] },
+      { ...newTask },
+      { upsert: false }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(400).json({ error: "Task not found." });
+    }
+
+    res.json({ Success: "Task replaced successfully." });
+  } catch (e) {
+    res.status(404).json({ error: e });
+  }
+});
+
 //Delete a specific daily task
 app.delete("/api/tasks/daily/:taskID", async (req, res) => {
   const { taskID } = req.params;
-  console.log("Delete request for: ", taskID);
 
   if (!ObjectId.isValid(taskID)) {
     return res.status(400).json({ error: "Invalid task ID" });
   }
 
   try {
-    const result = await tasks.deleteOne({ _id: new ObjectId(taskID) });
+    const result = await tasks.deleteOne({
+      $and: [{ _id: new ObjectId(taskID) }, { type: "Daily" }],
+    });
 
-    if (result.matchedCount === 0) {
+    if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Task not found" });
     }
 
@@ -144,6 +192,150 @@ app.delete("/api/tasks/daily/:taskID", async (req, res) => {
     res.status(400).json({ error: e });
   }
 });
+
+//////////////////////////////////////////////////////////////////////////
+
+// Weekly Get x2
+
+app.get("/api/tasks/weekly", async (req, res) => {
+  try {
+    const result = await tasks.find({ type: "Weekly" }).toArray();
+
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(400).json({ error: e });
+  }
+});
+
+app.get("/api/tasks/weekly/:taskID", async (req, res) => {
+  const { taskID } = req.params;
+
+  if (!ObjectId.isValid(taskID)) {
+    return res.status(400).json({ error: "Invalid task ID" });
+  }
+
+  try {
+    const result = await tasks
+      .find({ $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }] })
+      .toArray();
+
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(400).json({ error: e });
+  }
+});
+
+// Weekly Post
+
+app.post("/api/tasks/weekly", async (req, res) => {
+  let { name, weight } = req.body;
+  let insertData = {
+    name: name,
+    type: "Weekly",
+    habitual: false,
+    weight: weight,
+    complete: false,
+  };
+
+  try {
+    await tasks.insertOne(insertData);
+    res.json({ Success: insertData });
+  } catch (e) {
+    res.status(400).json({ error: e });
+  }
+});
+
+// Weekly Put
+
+app.put("/api/tasks/weekly/:taskID", async (req, res) => {
+  const { taskID } = req.params;
+  const { name, weight } = req.body;
+
+  const newTask = {
+    name,
+    type: "Weekly",
+    habitual: false,
+    weight: weight,
+    complete: false,
+  };
+
+  if (!ObjectId.isValid(taskID)) {
+    return res.status(400).json({ error: "Invalid task ID format" });
+  }
+
+  try {
+    const result = await tasks.replaceOne(
+      { $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }] },
+      { ...newTask },
+      { upsert: false }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(400).json({ error: "Task not found." });
+    }
+
+    res.json({ Success: "Task replaced successfully." });
+  } catch (e) {
+    res.status(404).json({ error: e });
+  }
+});
+
+// Weekly Patch
+
+app.patch("/api/tasks/weekly/:taskID", async (req, res) => {
+  const { taskID } = req.params;
+  const updates = req.body;
+
+  //Check if ID in right format
+  if (!ObjectId.isValid(taskID)) {
+    return res.status(400).json({ error: "Invalid task ID format" });
+  }
+
+  // PATCH SINGLE TASK
+  try {
+    const result = await tasks.updateOne(
+      { $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }] },
+      { $set: updates }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+
+    res.json({ success: "Task updated successfully" });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: e });
+  }
+});
+
+// Weekly Delete
+
+app.delete("/api/tasks/weekly/:taskID", async (req, res) => {
+  const { taskID } = req.params;
+
+  if (!ObjectId.isValid(taskID)) {
+    return res.status(400).json({ error: "Invalid task ID" });
+  }
+
+  try {
+    const result = await tasks.deleteOne({
+      $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }],
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+
+    res.status(200).json({ Success: "Task deleted successfully" });
+  } catch (e) {
+    res.status(400).json({ error: e });
+  }
+});
+
+//////////////////////////////////////////////////////////////////////////
+
+// TODO: GOALS
 
 app.listen(port, () => {
   console.log("Listening on port: " + port);
