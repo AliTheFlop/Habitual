@@ -37,16 +37,9 @@ Endpoints:
   PATCH /api/goals/:year -> Changes a goal for the specific year
   DELETE /api/goals/:year -> Deletes a year from the goals
 
-*/
 
-/*
-
-TODO:
-
-- RESTful Weekly & Goals
-- Fix up DELETE Daily -> Error when task doesn't exist
-- Daily Goals -> Put Request
-
+    TODO: 
+      Check if req.body has anything before putting, posting or patching. 
 */
 
 //Get ALL Tasks at once
@@ -139,14 +132,14 @@ app.patch("/api/tasks/daily/:taskID", async (req, res) => {
 // Change an entire document
 app.put("/api/tasks/daily/:taskID", async (req, res) => {
   const { taskID } = req.params;
-  const { name, type, habitual, weight, complete } = req.body;
+  const { name, habitual } = req.body;
 
   const newTask = {
-    name,
-    type,
-    habitual: habitual || false,
-    weight: weight || 0,
-    complete: complete || false,
+    name: name || "No Name Provided",
+    type: "Daily",
+    habitual: habitual,
+    weight: 0,
+    complete: false,
   };
 
   if (!ObjectId.isValid(taskID)) {
@@ -216,10 +209,14 @@ app.get("/api/tasks/weekly/:taskID", async (req, res) => {
 
   try {
     const result = await tasks
-      .find({ $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }] })
+      .findOne({ $and: [{ _id: new ObjectId(taskID) }, { type: "Weekly" }] })
       .toArray();
 
-    res.status(200).json(result);
+    if (!result) {
+      return res.status(400).json({ error: "Task not found." });
+    } else {
+      res.status(200).json(result);
+    }
   } catch (e) {
     res.status(400).json({ error: e });
   }
@@ -252,7 +249,7 @@ app.put("/api/tasks/weekly/:taskID", async (req, res) => {
   const { name, weight } = req.body;
 
   const newTask = {
-    name,
+    name: name || "No Name Provided!",
     type: "Weekly",
     habitual: false,
     weight: weight,
